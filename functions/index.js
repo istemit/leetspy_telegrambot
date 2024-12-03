@@ -1,19 +1,21 @@
 const functions = require("firebase-functions");
+const admin = require('firebase-admin');
 const {Telegraf} = require("telegraf");
 const axios = require("axios");
-const express = require("express");
 require('dotenv').config();
+
+admin.initializeApp({
+  credential: admin.credential.applicationDefault()
+});
 
 const BOT_TOKEN = process.env.TELEGRAM_TOKEN;
 const FUNCTION_URL = process.env.FUNCTION_URL;
 const bot = new Telegraf(BOT_TOKEN);
+const db = admin.firestore();
 
 if (!BOT_TOKEN || !FUNCTION_URL) {
   throw new Error('Environment variables TELEGRAM_TOKEN and FUNCTION_URL must be set');
 }
-
-// Store usernames in memory (replace with Firestore for persistence)
-const userMap = new Map();
 
 bot.telegram.setWebhook(`${FUNCTION_URL}/telegrambot`)
   .then(() => console.log('Webhook set successfully'))
@@ -38,18 +40,73 @@ bot.catch((err, ctx) => {
   ctx.reply('An error occurred, please try again later');
 });
 
+bot.command("add", async (ctx) => {
+  try {
+    const username = ctx.message.text.split(" ")[1];
+    if (!username) {
+      return ctx.reply("Usage: /add <LeetCode Username>");
+    }
+
+    const chatId = ctx.chat.id;
+    const chatRef = db.collection('chats').doc(chatId.toString());
+
+    const doc = await chatRef.get();
+    const usernames = doc.exists ? doc.data().usernames || [] : [];
+
+    // Check if username already exists
+    if (usernames.includes(username)) {
+      return ctx.reply(`Username '${username}' is already added!`);
+    }
+
+    // Add new username to array
+    usernames.push(username);
+    await chatRef.set({ usernames }, { merge: true });
+
+    ctx.reply(`Username '${username}' added! Total usernames in chat: ${usernames.length}`);
+  } catch (error) {
+    console.error('[Add] Error:', error);
+    ctx.reply("Error adding username. Please try again.");
+  }
+});
+
+bot.command("list", async (ctx) => {
+  try {
+    const chatId = ctx.chat.id;
+    const chatRef = db.collection('chats').doc(chatId.toString());
+    
+    const doc = await chatRef.get();
+    const usernames = doc.exists ? doc.data().usernames || [] : [];
+
+    if (usernames.length === 0) {
+      return ctx.reply("No usernames added yet. Use /add <username> to add LeetCode users.");
+    }
+
+    const usernameList = usernames
+      .map((username, index) => `${index + 1}. ${username}`)
+      .join('\n');
+
+    ctx.reply(`📋 LeetCode usernames in this chat:\n${usernameList}`);
+  } catch (error) {
+    console.error('[List] Error:', error);
+    ctx.reply("Error listing usernames. Please try again.");
+  }
+});
+
 bot.command("leaderboard", async (ctx) => {
   try {
     console.log('[Leaderboard] Starting leaderboard generation');
-    const leaderboard = [];
     
     const chatId = ctx.chat.id;
-    const usernames = userMap.get(chatId) || [];
+    const chatRef = db.collection('chats').doc(chatId.toString());
+    
+    const doc = await chatRef.get();
+    const usernames = doc.exists ? doc.data().usernames || [] : [];
 
     if (usernames.length === 0) {
       return ctx.reply("No users added yet. Use /add <username> to add LeetCode users.");
     }
 
+    const leaderboard = [];
     for (const username of usernames) {
       try {
         const userData = await fetchLeetcodeData(username);
@@ -79,52 +136,6 @@ bot.command("leaderboard", async (ctx) => {
   } catch (error) {
     console.error('[Leaderboard] Command error:', error);
     ctx.reply("Error generating leaderboard. Please try again later.");
-  }
-});
-
-bot.command("add", (ctx) => {
-  try {
-    const username = ctx.message.text.split(" ")[1];
-    if (!username) {
-      return ctx.reply("Usage: /add <LeetCode Username>");
-    }
-
-    const chatId = ctx.chat.id;
-    const usernames = userMap.get(chatId) || [];
-
-    // Check if username already exists
-    if (usernames.includes(username)) {
-      return ctx.reply(`Username '${username}' is already added!`);
-    }
-
-    // Add new username to array
-    usernames.push(username);
-    userMap.set(chatId, usernames);
-
-    ctx.reply(`Username '${username}' added! Total usernames in chat: ${usernames.length}`);
-  } catch (error) {
-    console.error('[Add] Error:', error);
-    ctx.reply("Error adding username. Please try again.");
-  }
-});
-
-bot.command("list", (ctx) => {
-  try {
-    const chatId = ctx.chat.id;
-    const usernames = userMap.get(chatId) || [];
-
-    if (usernames.length === 0) {
-      return ctx.reply("No usernames added yet. Use /add <username> to add LeetCode users.");
-    }
-
-    const usernameList = usernames
-      .map((username, index) => `${index + 1}. ${username}`)
-      .join('\n');
-
-    ctx.reply(`📋 LeetCode usernames in this chat:\n${usernameList}`);
-  } catch (error) {
-    console.error('[List] Error:', error);
-    ctx.reply("Error listing usernames. Please try again.");
   }
 });
 
