@@ -170,6 +170,64 @@ bot.command("leaderboard", async (ctx) => {
   }
 });
 
+bot.command("remove", async (ctx) => {
+  try {
+    const chatId = ctx.chat.id;
+    const chatRef = db.collection("chats").doc(chatId.toString());
+    
+    const doc = await chatRef.get();
+    const usernames = doc.exists ? doc.data().usernames || [] : [];
+
+    if (usernames.length === 0) {
+      return ctx.reply("No users to remove. Use /add to add users first.");
+    }
+
+    const keyboard = [
+      ...usernames.map(username => [{
+        text: `❌ ${username}`,
+        callback_data: `remove:${username}`
+      }]),
+      [{ text: "Cancel", callback_data: "remove:cancel" }]
+    ];
+
+    await ctx.reply("Select user to remove:", {
+      reply_markup: {
+        inline_keyboard: keyboard
+      }
+    });
+  } catch (error) {
+    console.error("[Remove] Error:", error);
+    ctx.reply("Error loading users. Please try again.");
+  }
+});
+
+bot.action("remove:cancel", async (ctx) => {
+  try {
+    await ctx.deleteMessage();
+  } catch (error) {
+    console.error("[Remove] Cancel error:", error);
+  }
+});
+
+bot.action(/remove:(.+)/, async (ctx) => {
+  try {
+    const username = ctx.match[1];
+    const chatId = ctx.chat.id;
+    const chatRef = db.collection("chats").doc(chatId.toString());
+    
+    const doc = await chatRef.get();
+    const usernames = doc.exists ? doc.data().usernames || [] : [];
+    
+    const updatedUsernames = usernames.filter(u => u !== username);
+    await chatRef.set({ usernames: updatedUsernames }, { merge: true });
+    
+    await ctx.editMessageText(`✅ Removed ${username} from the list.`);
+  } catch (error) {
+    console.error("[Remove] Callback error:", error);
+    ctx.answerCbQuery("Error removing user.");
+  }
+});
+
 async function fetchLeetcodeData(username) {
   const url = "https://leetcode.com/graphql";
   try {

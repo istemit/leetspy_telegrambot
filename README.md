@@ -28,6 +28,7 @@ LeetSpy Bot helps you track and compare LeetCode streaks with your friends. Crea
 2. Add users: `/add <leetcode_username>`
 3. Check leaderboard: `/leaderboard`
 4. List registered users: `/list`
+5. Remove users: `/remove`
 
 ## Commands
 
@@ -35,3 +36,4 @@ LeetSpy Bot helps you track and compare LeetCode streaks with your friends. Crea
 - `/add <username>` - Add LeetCode user
 - `/list` - Show registered users
 - `/leaderboard` - Display streak rankings
+- `/remove` - Remove user with interactive buttons
