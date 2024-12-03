@@ -1,11 +1,11 @@
 const functions = require("firebase-functions");
-const admin = require('firebase-admin');
-const {Telegraf} = require("telegraf");
+const admin = require("firebase-admin");
+const { Telegraf } = require("telegraf");
 const axios = require("axios");
-require('dotenv').config();
+require("dotenv").config();
 
 admin.initializeApp({
-  credential: admin.credential.applicationDefault()
+  credential: admin.credential.applicationDefault(),
 });
 
 const BOT_TOKEN = process.env.TELEGRAM_TOKEN;
@@ -14,30 +14,33 @@ const bot = new Telegraf(BOT_TOKEN);
 const db = admin.firestore();
 
 if (!BOT_TOKEN || !FUNCTION_URL) {
-  throw new Error('Environment variables TELEGRAM_TOKEN and FUNCTION_URL must be set');
+  throw new Error(
+    "Environment variables TELEGRAM_TOKEN and FUNCTION_URL must be set"
+  );
 }
 
-bot.telegram.setWebhook(`${FUNCTION_URL}/telegrambot`)
-  .then(() => console.log('Webhook set successfully'))
-  .catch(error => console.error('Webhook setting failed:', error));
+bot.telegram
+  .setWebhook(`${FUNCTION_URL}/telegrambot`)
+  .then(() => console.log("Webhook set successfully"))
+  .catch((error) => console.error("Webhook setting failed:", error));
 
 bot.start(async (ctx) => {
   try {
-    console.log('[Bot Start] New user:', ctx.from.id);
+    console.log("[Bot Start] New user:", ctx.from.id);
     await ctx.reply(
       "Welcome to the LeetCode Leaderboard Bot! " +
-      "Use /add <username> to add your LeetCode username."
+        "Use /add <username> to add your LeetCode username."
     );
-    console.log('[Bot Start] Welcome message sent');
+    console.log("[Bot Start] Welcome message sent");
   } catch (error) {
-    console.error('[Bot Start Error]:', error);
+    console.error("[Bot Start Error]:", error);
     throw error; // Let the global error handler catch it
   }
 });
-  
+
 bot.catch((err, ctx) => {
-  console.error('[Bot Error]', err);
-  ctx.reply('An error occurred, please try again later');
+  console.error("[Bot Error]", err);
+  ctx.reply("An error occurred, please try again later");
 });
 
 bot.command("add", async (ctx) => {
@@ -48,7 +51,7 @@ bot.command("add", async (ctx) => {
     }
 
     const chatId = ctx.chat.id;
-    const chatRef = db.collection('chats').doc(chatId.toString());
+    const chatRef = db.collection("chats").doc(chatId.toString());
 
     const doc = await chatRef.get();
     const usernames = doc.exists ? doc.data().usernames || [] : [];
@@ -62,9 +65,11 @@ bot.command("add", async (ctx) => {
     usernames.push(username);
     await chatRef.set({ usernames }, { merge: true });
 
-    ctx.reply(`Username '${username}' added! Total usernames in chat: ${usernames.length}`);
+    ctx.reply(
+      `Username '${username}' added! Total usernames in chat: ${usernames.length}`
+    );
   } catch (error) {
-    console.error('[Add] Error:', error);
+    console.error("[Add] Error:", error);
     ctx.reply("Error adding username. Please try again.");
   }
 });
@@ -72,38 +77,42 @@ bot.command("add", async (ctx) => {
 bot.command("list", async (ctx) => {
   try {
     const chatId = ctx.chat.id;
-    const chatRef = db.collection('chats').doc(chatId.toString());
-    
+    const chatRef = db.collection("chats").doc(chatId.toString());
+
     const doc = await chatRef.get();
     const usernames = doc.exists ? doc.data().usernames || [] : [];
 
     if (usernames.length === 0) {
-      return ctx.reply("No usernames added yet. Use /add <username> to add LeetCode users.");
+      return ctx.reply(
+        "No usernames added yet. Use /add <username> to add LeetCode users."
+      );
     }
 
     const usernameList = usernames
       .map((username, index) => `${index + 1}. ${username}`)
-      .join('\n');
+      .join("\n");
 
     ctx.reply(`📋 LeetCode usernames in this chat:\n${usernameList}`);
   } catch (error) {
-    console.error('[List] Error:', error);
+    console.error("[List] Error:", error);
     ctx.reply("Error listing usernames. Please try again.");
   }
 });
 
 bot.command("leaderboard", async (ctx) => {
   try {
-    console.log('[Leaderboard] Starting leaderboard generation');
-    
+    console.log("[Leaderboard] Starting leaderboard generation");
+
     const chatId = ctx.chat.id;
-    const chatRef = db.collection('chats').doc(chatId.toString());
-    
+    const chatRef = db.collection("chats").doc(chatId.toString());
+
     const doc = await chatRef.get();
     const usernames = doc.exists ? doc.data().usernames || [] : [];
 
     if (usernames.length === 0) {
-      return ctx.reply("No users added yet. Use /add <username> to add LeetCode users.");
+      return ctx.reply(
+        "No users added yet. Use /add <username> to add LeetCode users."
+      );
     }
 
     const leaderboard = [];
@@ -111,14 +120,17 @@ bot.command("leaderboard", async (ctx) => {
       try {
         const userData = await fetchLeetcodeData(username);
         const userStats = userData.data.matchedUser.userCalendar;
-        
-        leaderboard.push({ 
-          username, 
+
+        leaderboard.push({
+          username,
           streak: userStats.streak,
-          totalActiveDays: userStats.totalActiveDays
+          totalActiveDays: userStats.totalActiveDays,
         });
       } catch (error) {
-        console.error(`[Leaderboard] Error processing user ${username}:`, error);
+        console.error(
+          `[Leaderboard] Error processing user ${username}:`,
+          error
+        );
       }
     }
 
@@ -128,13 +140,22 @@ bot.command("leaderboard", async (ctx) => {
 
     leaderboard.sort((a, b) => b.streak - a.streak);
     const leaderboardText = leaderboard
-      .map((entry, index) => 
-        `${index + 1}. ${entry.username}: 🔥 ${entry.streak} day streak (${entry.totalActiveDays} total active days)`)
+      .map(
+        (entry, index) =>
+          `${index + 1}. <a href="https://leetcode.com/u/${entry.username}/">${
+            entry.username
+          }</a>: 🔥 ${entry.streak} day streak (${
+            entry.totalActiveDays
+          } total active days)`
+      )
       .join("\n");
 
-    await ctx.reply(`🏆 LeetCode Streak Leaderboard:\n\n${leaderboardText}`);
+    await ctx.reply(`🏆 LeetCode Streak Leaderboard:\n\n${leaderboardText}`, {
+      parse_mode: "HTML",
+      disable_web_page_preview: true,
+    });
   } catch (error) {
-    console.error('[Leaderboard] Command error:', error);
+    console.error("[Leaderboard] Command error:", error);
     ctx.reply("Error generating leaderboard. Please try again later.");
   }
 });
@@ -143,7 +164,7 @@ async function fetchLeetcodeData(username) {
   const url = "https://leetcode.com/graphql";
   try {
     console.log(`[Fetch] Attempting to fetch data for user: ${username}`);
-    
+
     const currentYear = new Date().getFullYear();
     const query = {
       query: `
@@ -158,17 +179,20 @@ async function fetchLeetcodeData(username) {
           }
         }
       `,
-      variables: { 
+      variables: {
         username,
-        year: currentYear
+        year: currentYear,
       },
     };
 
     const response = await axios.post(url, query, {
-      headers: {"Content-Type": "application/json"},
+      headers: { "Content-Type": "application/json" },
     });
 
-    console.log(`[Fetch] Response for ${username}:`, JSON.stringify(response.data, null, 2));
+    console.log(
+      `[Fetch] Response for ${username}:`,
+      JSON.stringify(response.data, null, 2)
+    );
 
     if (!response.data.data || !response.data.data.matchedUser) {
       throw new Error(`User ${username} not found`);
@@ -183,11 +207,11 @@ async function fetchLeetcodeData(username) {
 
 exports.telegrambot = functions.https.onRequest(async (req, res) => {
   try {
-    console.log('[Webhook] Received update:', req.body);
+    console.log("[Webhook] Received update:", req.body);
     await bot.handleUpdate(req.body);
     res.sendStatus(200);
   } catch (error) {
-    console.error('[Webhook Error]:', error);
+    console.error("[Webhook Error]:", error);
     res.sendStatus(500);
   }
 });
