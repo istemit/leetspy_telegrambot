@@ -120,10 +120,14 @@ bot.command("leaderboard", async (ctx) => {
       try {
         const userData = await fetchLeetcodeData(username);
         const userStats = userData.data.matchedUser.userCalendar;
+        const currentStreak = await calculateCurrentStreak(
+          userStats.submissionCalendar
+        );
 
         leaderboard.push({
           username,
-          streak: userStats.streak,
+          currentStreak,
+          maxStreak: userStats.streak,
           totalActiveDays: userStats.totalActiveDays,
         });
       } catch (error) {
@@ -138,15 +142,15 @@ bot.command("leaderboard", async (ctx) => {
       return ctx.reply("Could not fetch data for any users.");
     }
 
-    leaderboard.sort((a, b) => b.streak - a.streak);
+    leaderboard.sort((a, b) => b.currentStreak - a.currentStreak);
     const leaderboardText = leaderboard
       .map(
         (entry, index) =>
           `${index + 1}. <a href="https://leetcode.com/u/${entry.username}/">${
             entry.username
-          }</a>: 🔥 ${entry.streak} day streak (${
-            entry.totalActiveDays
-          } total active days)`
+          }</a>: 🔥 ${entry.currentStreak} current streak (max: ${
+            entry.maxStreak
+          })`
       )
       .join("\n");
 
@@ -185,24 +189,65 @@ async function fetchLeetcodeData(username) {
       },
     };
 
-    const response = await axios.post(url, query, {
-      headers: { "Content-Type": "application/json" },
-    });
+    const response = await axios.post(url, query);
+    const userCalendar = response.data.data.matchedUser.userCalendar;
 
-    console.log(
-      `[Fetch] Response for ${username}:`,
-      JSON.stringify(response.data, null, 2)
+    const currentStreak = await calculateCurrentStreak(
+      userCalendar.submissionCalendar
     );
 
-    if (!response.data.data || !response.data.data.matchedUser) {
-      throw new Error(`User ${username} not found`);
-    }
-
-    return response.data;
+    return {
+      data: {
+        matchedUser: {
+          userCalendar: {
+            ...userCalendar,
+            currentStreak,
+            maxStreak: userCalendar.streak,
+          },
+        },
+      },
+    };
   } catch (error) {
     console.error(`[Fetch] Error for ${username}:`, error.message);
     throw error;
   }
+}
+
+async function calculateCurrentStreak(submissionCalendar) {
+  const submissions = JSON.parse(submissionCalendar);
+
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const today = Math.floor(now.getTime() / 1000);
+  const yesterday = today - 86400;
+  const oneDay = 86400;
+
+  let currentStreak = 0;
+  let currentDay = today;
+  const maxDays = 365;
+  let daysChecked = 0;
+
+  // If no submissions today, start checking from yesterday
+  if (
+    !submissions[today.toString()] ||
+    parseInt(submissions[today.toString()]) === 0
+  ) {
+    currentDay = yesterday;
+    console.log("[Streak] No submissions today, checking from yesterday");
+  }
+
+  while (daysChecked < maxDays) {
+    const dayKey = currentDay.toString();
+    if (submissions[dayKey] && parseInt(submissions[dayKey]) > 0) {
+      currentStreak++;
+      currentDay -= oneDay;
+      daysChecked++;
+    } else {
+      break;
+    }
+  }
+
+  return currentStreak;
 }
 
 exports.telegrambot = functions.https.onRequest(async (req, res) => {
