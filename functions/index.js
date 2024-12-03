@@ -50,6 +50,12 @@ bot.command("add", async (ctx) => {
       return ctx.reply("Usage: /add <LeetCode Username>");
     }
 
+    const isValid = await verifyLeetCodeUser(username);
+
+    if (!isValid) {
+      return ctx.reply(`Username '${username}' not found on LeetCode!`);
+    }
+
     const chatId = ctx.chat.id;
     const chatRef = db.collection("chats").doc(chatId.toString());
 
@@ -66,7 +72,7 @@ bot.command("add", async (ctx) => {
     await chatRef.set({ usernames }, { merge: true });
 
     ctx.reply(
-      `Username '${username}' added! Total usernames in chat: ${usernames.length}`
+      `✅ Username '${username}' verified and added! Total usernames in chat: ${usernames.length}`
     );
   } catch (error) {
     console.error("[Add] Error:", error);
@@ -248,6 +254,28 @@ async function calculateCurrentStreak(submissionCalendar) {
   }
 
   return currentStreak;
+}
+
+async function verifyLeetCodeUser(username) {
+  const url = "https://leetcode.com/graphql";
+  try {
+    const query = {
+      query: `
+        query getUserProfile($username: String!) {
+          matchedUser(username: $username) {
+            username
+          }
+        }
+      `,
+      variables: { username },
+    };
+
+    const response = await axios.post(url, query);
+    return response.data.data.matchedUser !== null;
+  } catch (error) {
+    console.error(`[Verify] Error checking user ${username}:`, error);
+    return false;
+  }
 }
 
 exports.telegrambot = functions.https.onRequest(async (req, res) => {
